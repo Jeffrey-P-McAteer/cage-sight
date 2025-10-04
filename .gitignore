@@ -3,4 +3,6 @@ data
 build
 out
 output
+analysis_output
+
 /target
