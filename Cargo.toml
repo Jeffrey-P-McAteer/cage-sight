@@ -1,0 +1,46 @@
+[package]
+name = "cage-sight"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Configuration and serialization
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# Command line interface
+clap = { version = "4.0", features = ["derive"] }
+
+# Async runtime and process management
+tokio = { version = "1.0", features = ["full"] }
+
+# Network packet capture and analysis
+pcap = "2.0"
+pnet = "0.35"
+
+# DNS packet parsing
+trust-dns-proto = "0.23"
+
+# File system and qcow2 inspection (placeholder - would need custom bindings)
+# libguestfs = { version = "0.8", optional = true }
+
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# JSON serialization
+serde_json = "1.0"
+
+# Path and file utilities
+which = "6.0"
+
+[features]
+default = []
+# qcow2-inspection = ["libguestfs"]

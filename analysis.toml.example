@@ -1,0 +1,60 @@
+# Cage-Sight VM Analysis Configuration
+
+[vm]
+# VM system resources
+ram_mb = 2048
+cpus = 2
+# QEMU machine type (pc, q35, etc.)
+machine = "q35"
+# Boot order (c=hdd, d=cdrom, n=network)
+boot = "c"
+
+[disks]
+# Primary disk configuration
+[[disks.drives]]
+name = "primary"
+path = "/path/to/disk.qcow2"
+format = "qcow2"
+# Interface type: ide, sata, virtio, scsi
+interface = "virtio"
+# Whether to inspect filesystem before/after boot
+inspect = true
+
+# Optional secondary drives
+# [[disks.drives]]
+# name = "secondary"
+# path = "/path/to/secondary.qcow2"
+# format = "qcow2"
+# interface = "virtio"
+# inspect = false
+
+[network]
+# Network configuration
+enabled = true
+# Network mode: user (DHCP NAT), bridge, tap
+mode = "user"
+# Host port forwarding (optional)
+# [[network.forwards]]
+# host_port = 2222
+# guest_port = 22
+# protocol = "tcp"
+
+[logging]
+# Network traffic capture
+capture_network = true
+# Output directory for logs and captures
+output_dir = "./analysis_output"
+# Log DNS requests
+log_dns = true
+# Log HTTP requests
+log_http = true
+# Packet capture file format
+pcap_format = "pcap"
+
+[analysis]
+# Time to run VM (in seconds, 0 = indefinite)
+runtime_seconds = 300
+# Take snapshots at intervals
+snapshot_interval_seconds = 60
+# Automatically inspect disk changes after shutdown
+inspect_changes = true
