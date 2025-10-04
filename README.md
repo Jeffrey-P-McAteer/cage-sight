@@ -21,10 +21,9 @@ A comprehensive VM analysis tool for security research and malware analysis. Cag
   - Windows: Download from [QEMU website](https://www.qemu.org/download/)
   - macOS: `brew install qemu`
 
-- **libpcap**: For network packet capture
-  - Linux: `sudo apt install libpcap-dev` or `sudo yum install libpcap-devel`
-  - Windows: Included with WinPcap/Npcap
-  - macOS: Pre-installed
+- **No special privileges**: Network capture uses QEMU's built-in capabilities
+  - No root/administrator access required
+  - No libpcap or raw socket access needed
 
 #### Optional
 - **libguestfs**: For advanced disk inspection (recommended)
@@ -69,9 +68,16 @@ cargo install --path .
    cage-sight validate analysis.toml
    ```
 
-4. **Run VM analysis**:
+4. **Run VM analysis** (no root/admin privileges required):
    ```bash
-   sudo cage-sight run analysis.toml
+   # Headless mode (default)
+   cage-sight run analysis.toml
+   
+   # With GUI for interactive access
+   cage-sight run --gui analysis.toml
+   
+   # With VNC server for remote access
+   cage-sight run --vnc 5901 analysis.toml
    ```
 
 5. **Check results** in the output directory specified in your config.
@@ -117,8 +123,30 @@ See `analysis.toml.example` for a complete configuration with all options.
 - `name`: Friendly name for the drive
 - `path`: Path to qcow2/raw disk image
 - `format`: Disk format ("qcow2", "raw", "vmdk")
-- `interface`: Disk interface ("virtio", "ide", "sata", "scsi")
+- `interface`: Disk interface (see supported interfaces below)
 - `inspect`: Enable deep disk inspection
+
+**Supported Disk Interfaces:**
+- `virtio`: Modern paravirtualized driver (best performance, requires VirtIO drivers)
+- `ide`: Legacy IDE/PATA interface (universally supported, slower performance)  
+- `sata`: SATA interface via AHCI controller (widely supported, good performance)
+- `scsi`: SCSI interface (good for enterprise systems, requires SCSI drivers)
+- `nvme`: NVMe SSD interface (fastest, requires modern OS with NVMe support)
+
+**Guest OS Compatibility:**
+- **Windows 10/11**: All interfaces supported (VirtIO requires driver installation)
+- **Windows 7/8**: IDE, SATA, SCSI supported (VirtIO requires drivers)
+- **Linux (modern)**: All interfaces supported natively
+- **Linux (legacy)**: IDE, SATA, SCSI supported (VirtIO may need kernel modules)
+- **BSD systems**: IDE, SATA, SCSI, VirtIO supported
+- **Legacy/DOS systems**: IDE only
+
+**Recommendations:**
+- **General use**: `virtio` (best performance with driver support)
+- **Legacy compatibility**: `ide` (slowest but universally compatible)
+- **Modern without drivers**: `sata` (good balance of speed and compatibility)
+- **Enterprise/server**: `scsi` (robust, good for multiple drives)
+- **High performance**: `nvme` (requires modern guest OS)
 
 #### `[network]`
 - `enabled`: Enable/disable networking
@@ -137,6 +165,56 @@ See `analysis.toml.example` for a complete configuration with all options.
 - `snapshot_interval_seconds`: Disk snapshot interval
 - `inspect_changes`: Compare before/after disk states
 
+## Display Modes
+
+Cage-Sight supports multiple display modes for VM interaction:
+
+### Headless Mode (Default)
+```bash
+cage-sight run analysis.toml
+```
+- No display output
+- Fully automated analysis
+- Minimal resource usage
+- Ideal for batch processing
+
+### GUI Mode
+```bash
+cage-sight run --gui analysis.toml
+```
+- **Local interactive GUI window** (SDL/GTK/platform-native)
+- Direct mouse/keyboard access to VM
+- Real-time VM interaction and control
+- **Always prioritizes local display** over remote access
+- Automatically selects best display backend (SDL preferred)
+- Requires graphical environment (X11/Wayland/Windows/macOS)
+
+### VNC Mode
+```bash
+cage-sight run --vnc 5901 analysis.toml
+```
+- Remote access via VNC protocol
+- Works over network connections
+- No local display required
+- Connect with any VNC client to `localhost:5901`
+
+### Combined Mode
+```bash
+cage-sight run --gui --vnc 5902 analysis.toml
+```
+- GUI takes priority (local display)
+- VNC ignored when GUI is enabled
+- Use separate commands for different modes
+
+### Force SDL Display
+```bash
+export SDL_VIDEODRIVER=x11    # Force SDL backend
+cage-sight run --gui analysis.toml
+```
+- Ensures SDL display backend is used
+- Most reliable for local GUI windows
+- Works across platforms
+
 ## Usage Examples
 
 ### Basic Malware Analysis
@@ -145,8 +223,18 @@ See `analysis.toml.example` for a complete configuration with all options.
 cage-sight generate-config malware-analysis.toml
 
 # Edit to point to your malware VM image
-# Run analysis for 5 minutes
+# Run automated analysis for 5 minutes
 cage-sight run malware-analysis.toml
+```
+
+### Interactive Malware Analysis
+```bash
+# Run with GUI for manual interaction
+cage-sight run --gui malware-analysis.toml
+
+# Or use VNC for remote analysis
+cage-sight run --vnc 5900 malware-analysis.toml
+# Then connect with: vncviewer localhost:5900
 ```
 
 ### Network Traffic Analysis Only
@@ -155,8 +243,7 @@ cage-sight run malware-analysis.toml
 cage-sight inspect analysis.toml
 
 # Run VM with focus on network monitoring
-# Edit config to increase runtime and enable detailed logging
-cage-sight run network-focused.toml
+cage-sight run --gui network-focused.toml
 ```
 
 ### System Information Check
@@ -185,8 +272,8 @@ Cage-Sight generates comprehensive analysis results:
 
 ## Security Considerations
 
-- **Root Privileges**: Required for packet capture and some disk operations
-- **Network Isolation**: Use appropriate network modes to contain analysis
+- **No Elevated Privileges**: Runs entirely as regular user with no special access requirements
+- **Network Isolation**: VM network traffic is contained within QEMU's user-mode networking
 - **Disk Snapshots**: Always work with copies of original disk images
 - **Output Security**: Analysis results may contain sensitive information
 
@@ -201,12 +288,37 @@ cage-sight info
 which qemu-system-x86_64
 ```
 
-**Permission denied for packet capture**:
+**No permission issues**: Cage-sight uses QEMU's built-in network monitoring, which requires no special privileges:
 ```bash
-# Run with sudo or add capabilities
-sudo cage-sight run analysis.toml
-# OR (Linux only)
-sudo setcap cap_net_raw+ep target/release/cage-sight
+# Works as regular user - no sudo needed
+cage-sight run analysis.toml
+```
+
+**GUI mode not showing window**:
+```bash
+# Check if you have a graphical environment
+echo $DISPLAY          # Should show something like :0
+echo $WAYLAND_DISPLAY   # For Wayland sessions
+
+# Check QEMU display backends available
+qemu-system-x86_64 -display help
+
+# Force specific display backend
+export SDL_VIDEODRIVER=x11    # Force SDL to use X11
+cage-sight run --gui analysis.toml
+
+# Try VNC instead if GUI completely fails
+cage-sight run --vnc 5900 analysis.toml
+```
+
+**VNC connection issues**:
+```bash
+# Check if port is available
+netstat -ln | grep 5900
+
+# Connect with VNC viewer
+vncviewer localhost:5900
+# Or use any VNC client with address: localhost:5900
 ```
 
 **libguestfs errors**:

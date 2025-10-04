@@ -76,6 +76,12 @@ pub struct AnalysisConfig_ {
     pub inspect_changes: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct DisplayConfig {
+    pub gui_enabled: bool,
+    pub vnc_port: Option<u16>,
+}
+
 // Default value functions
 fn default_machine() -> String {
     "q35".to_string()
@@ -127,10 +133,16 @@ impl AnalysisConfig {
             anyhow::bail!("CPU count must be between 1 and 64");
         }
 
-        // Validate disk files exist
+        // Validate disk files exist and interfaces
         for drive in &self.disks.drives {
             if !drive.path.exists() {
                 anyhow::bail!("Disk file does not exist: {}", drive.path.display());
+            }
+            
+            // Validate disk interface
+            match drive.interface.to_lowercase().as_str() {
+                "ide" | "sata" | "scsi" | "virtio" | "nvme" | "ahci" => {},
+                _ => anyhow::bail!("Unsupported disk interface '{}' for drive '{}'. Supported interfaces: ide, sata, scsi, virtio, nvme", drive.interface, drive.name)
             }
         }
 

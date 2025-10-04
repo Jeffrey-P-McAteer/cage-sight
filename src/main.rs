@@ -33,6 +33,10 @@ enum Commands {
     Run {
         #[arg(help = "Analysis configuration file")]
         config_file: PathBuf,
+        #[arg(long, help = "Enable GUI display for interactive VM access")]
+        gui: bool,
+        #[arg(long, help = "VNC display port (enables VNC server for remote access)")]
+        vnc: Option<u16>,
     },
     /// Inspect disk images without running VM
     Inspect {
@@ -65,8 +69,8 @@ async fn main() -> Result<()> {
     info!("Starting Cage-Sight VM Analysis Tool");
 
     match cli.command {
-        Commands::Run { config_file } => {
-            run_analysis(config_file).await?;
+        Commands::Run { config_file, gui, vnc } => {
+            run_analysis(config_file, gui, vnc).await?;
         }
         Commands::Inspect { config_file } => {
             inspect_disks(config_file).await?;
@@ -85,12 +89,34 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn run_analysis(config_file: PathBuf) -> Result<()> {
+async fn run_analysis(config_file: PathBuf, gui: bool, vnc: Option<u16>) -> Result<()> {
     info!("Loading configuration from: {}", config_file.display());
     let config = config::AnalysisConfig::from_file(&config_file)?;
     config.validate()?;
 
-    info!("Starting full VM analysis");
+    // Create display configuration
+    let display_config = if gui || vnc.is_some() {
+        Some(config::DisplayConfig {
+            gui_enabled: gui,
+            vnc_port: vnc,
+        })
+    } else {
+        None
+    };
+
+    if gui && vnc.is_some() {
+        info!("Starting VM analysis with GUI display (VNC port {} ignored - use separate runs for VNC-only)", vnc.unwrap());
+        info!("🖥️  GUI window will open for direct VM interaction");
+    } else if gui {
+        info!("Starting VM analysis with GUI display enabled");
+        info!("🖥️  GUI window will open for direct VM interaction");
+    } else if let Some(port) = vnc {
+        info!("Starting VM analysis with VNC display on port {}", port);
+        info!("🌐 Connect with VNC client to localhost:{}", port);
+    } else {
+        info!("Starting VM analysis in headless mode");
+        info!("📋 Automated analysis - no display output");
+    }
     
     // Create output directory
     std::fs::create_dir_all(&config.logging.output_dir)?;
@@ -98,7 +124,7 @@ async fn run_analysis(config_file: PathBuf) -> Result<()> {
     // Initialize components
     let mut vm_manager = vm::VmManager::new(config.clone())?;
     let mut network_monitor = network::NetworkMonitor::new(config.logging.clone())?;
-    let dns_monitor = dns::DnsMonitor::new(&config.logging.output_dir)?;
+    let mut dns_monitor = dns::DnsMonitor::new(&config.logging.output_dir)?;
     let disk_inspector = disk::DiskInspector::new(
         config.disks.drives.clone(),
         config.logging.output_dir.clone(),
@@ -110,9 +136,9 @@ async fn run_analysis(config_file: PathBuf) -> Result<()> {
         disk_inspector.take_before_snapshot().await?;
     }
 
-    // Start network monitoring
+    // Start network monitoring (no privileges required)
     if config.logging.capture_network {
-        info!("Starting network monitoring");
+        info!("Starting network monitoring (QEMU-based, no root required)");
         network_monitor.start_capture().await?;
     }
 
@@ -122,9 +148,9 @@ async fn run_analysis(config_file: PathBuf) -> Result<()> {
         info!("Received shutdown signal");
     };
 
-    // Run VM analysis
+    // Run VM analysis with network monitoring and display config
     tokio::select! {
-        result = vm_manager.run_analysis() => {
+        result = vm_manager.run_analysis(Some(&network_monitor), display_config.as_ref()) => {
             match result {
                 Ok(()) => info!("VM analysis completed successfully"),
                 Err(e) => error!("VM analysis failed: {}", e),
@@ -137,6 +163,18 @@ async fn run_analysis(config_file: PathBuf) -> Result<()> {
 
     // Stop network monitoring
     network_monitor.stop_capture();
+
+    // Process network dump for DNS analysis
+    if config.logging.capture_network {
+        if let Some(dump_file) = network_monitor.get_dump_file() {
+            info!("Processing network dump for DNS analysis");
+            dns_monitor.process_pcap_file(dump_file).await?;
+        }
+        
+        // Get final network statistics
+        let network_stats = network_monitor.process_dump_file().await?;
+        info!("Network analysis complete: {} total packets captured", network_stats.total_packets);
+    }
 
     // Take after-boot snapshots
     if config.analysis.inspect_changes {
@@ -254,16 +292,16 @@ async fn show_system_info() -> Result<()> {
 
     // Check network capture capabilities
     match network::NetworkMonitor::new(Default::default()) {
-        Ok(_) => info!("✓ Network capture capabilities available"),
+        Ok(_) => info!("✓ Network capture capabilities available (QEMU-based, no privileges required)"),
         Err(e) => info!("! Network capture may have issues: {}", e),
     }
 
     info!("=== Requirements ===");
     info!("- QEMU/KVM for VM execution");
-    info!("- libpcap-dev for network capture");
+    info!("- No special privileges required (runs as regular user)");
     info!("- libguestfs for advanced disk inspection (optional)");
     info!("- Sufficient disk space for VM images and logs");
-    info!("- Network interface access for packet capture");
+    info!("- Network capture via QEMU built-in features");
 
     Ok(())
 }

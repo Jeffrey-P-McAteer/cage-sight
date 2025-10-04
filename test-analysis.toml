@@ -2,38 +2,30 @@
 
 [vm]
 # VM system resources
-ram_mb = 2048
-cpus = 2
+ram_mb = 512
+cpus = 1
 # QEMU machine type (pc, q35, etc.)
 machine = "q35"
 # Boot order (c=hdd, d=cdrom, n=network)
 boot = "c"
 
 [disks]
-# Primary disk configuration
+# Primary disk configuration - this will fail because file doesn't exist
 [[disks.drives]]
 name = "primary"
-path = "/path/to/disk.qcow2"
+path = "/tmp/test-proper.qcow2"
 format = "qcow2"
-# Interface type: ide, sata, virtio, scsi, nvme
-# Note: sata is automatically converted to AHCI controller for compatibility
-interface = "virtio"
+# Interface type: ide, sata, virtio, scsi
+interface = "sata"
 # Whether to inspect filesystem before/after boot
-inspect = true
+inspect = false
 
-# Optional secondary drives with different interfaces
+# Optional secondary drives
 # [[disks.drives]]
-# name = "data_disk"
-# path = "/path/to/data.qcow2"
+# name = "secondary"
+# path = "/path/to/secondary.qcow2"
 # format = "qcow2"
-# interface = "sata"    # Good compatibility for Windows VMs
-# inspect = true
-
-# [[disks.drives]]
-# name = "legacy_disk" 
-# path = "/path/to/legacy.qcow2"
-# format = "qcow2"
-# interface = "ide"     # Maximum compatibility for old systems
+# interface = "virtio"
 # inspect = false
 
 [network]
@@ -61,8 +53,8 @@ pcap_format = "pcap"
 
 [analysis]
 # Time to run VM (in seconds, 0 = indefinite)
-runtime_seconds = 300
+runtime_seconds = 1
 # Take snapshots at intervals
 snapshot_interval_seconds = 60
 # Automatically inspect disk changes after shutdown
-inspect_changes = true
+inspect_changes = false
